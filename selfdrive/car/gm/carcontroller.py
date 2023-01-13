@@ -29,6 +29,7 @@ class CarController:
 
     self.lka_steering_cmd_counter = 0
     self.sent_lka_steering_cmd = False
+    self.active_aeb_frame_count = 0
     self.lka_icon_status_last = (False, False)
 
     self.params = CarControllerParams(self.CP)
@@ -47,6 +48,31 @@ class CarController:
 
     # Send CAN commands.
     can_sends = []
+    
+    aeb_active = False
+
+    if CS.drive_mode_button_pressed:
+      aeb_active = True
+    #if (self.CP.networkLocation == NetworkLocation.gateway and self.frame % self.params.AEB_STEP) == 0:
+    # TODO: In theory, AEB is disabled with ASCM, and we can block it for all other configs
+    # AEB message every 30ms
+    # TODO: Detect AEB on PT bus and block this
+    if (self.frame % self.params.AEB_STEP) == 0:
+    
+      if CS.out.stockAeb:
+        # Passthrough stock AEB values while camera AEB is active
+        can_sends.append(gmcan._create_aeb_command_internal(self.packer_pt, CanBus.POWERTRAIN, CS.stock_aeb,
+                                                            CS.stock_aeb2, CS.stock_aeb_rolling_counter, True))      
+      else:
+        if (aeb_active):
+          self.active_aeb_frame_count += 1
+        else:
+          self.active_aeb_frame_count = 0
+
+        idx = (self.frame / self.params.AEB_STEP) % 4
+
+        can_sends.append(gmcan.create_aeb_command(self.packer_pt, CanBus.POWERTRAIN, self.active_aeb_frame_count, idx, aeb_active))
+
 
     # Steering (Active: 50Hz, inactive: 10Hz)
     # Attempt to sync with camera on startup at 50Hz, first few msgs are blocked
